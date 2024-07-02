@@ -3,7 +3,6 @@ import logging
 
 from sqlalchemy import create_engine, MetaData, Table, select, Column, text, Integer, String, Sequence
 from sqlalchemy.orm import Session
-from sqlalchemy.orm import declarative_base
 from sqlalchemy.engine.url import URL
 
 # Setup logging
@@ -11,32 +10,19 @@ logging.basicConfig()
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 
-Base = declarative_base()
-
-
-class FakeModel(Base):  # type: ignore
-    __tablename__ = "fake"
-
-    id = Column(Integer, Sequence("fakemodel_id_sequence"), primary_key=True)
-    name = Column(String)
-
-
 def main():
     # Build the URL
-    url = URL.create(drivername="flight_sql",
-                     host="localhost",
-                     port=31337,
-                     username=os.getenv("FLIGHT_USERNAME", "flight_username"),
-                     password=os.getenv("FLIGHT_PASSWORD", "flight_password"),
+    url = URL.create(drivername="theseus",
+                     host="theseus-gateway.vice.svc.cluster.local",
+                     port=11234,
                      query={"disableCertificateVerification": "True",
-                            "useEncryption": "True"
+                            "useEncryption": "False"
                             }
                      )
 
     print(f"Database URL: {url}")
 
     engine = create_engine(url=url)
-    Base.metadata.create_all(bind=engine)
 
     metadata = MetaData()
     metadata.reflect(bind=engine)
@@ -46,15 +32,7 @@ def main():
 
     with Session(bind=engine) as session:
 
-        # Try ORM
-        session.add(FakeModel(id=1, name="Joe"))
-        session.commit()
-
-        joe = session.query(FakeModel).filter(FakeModel.name == "Joe").first()
-
-        assert joe.name == "Joe"
-
-        # Execute some raw SQL
+        # Execute some raw SQL (this assumes you have a registered table called: "fake")
         results = session.execute(statement=text("SELECT * FROM fake")).fetchall()
         print(results)
 

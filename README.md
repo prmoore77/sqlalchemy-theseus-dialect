@@ -48,7 +48,6 @@ Once you've installed this package, you should be able to just use it, as SQLAlc
 
 ### Connect with the SQLAlchemy Theseus Dialect
 ```python
-import os
 import logging
 
 from sqlalchemy import create_engine, MetaData, Table, select, Column, text, Integer, String, Sequence

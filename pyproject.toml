@@ -33,7 +33,7 @@ dependencies = [
 requires-python = ">=3.9"
 
 [project.entry-points."sqlalchemy.dialects"]
-flight_sql = "sqlalchemy_theseus_dialect:TheseusDialect"
+theseus = "sqlalchemy_theseus_dialect:TheseusDialect"
 
 [project.optional-dependencies]
 dev = ["bumpver", "pip-tools", "pytest"]
