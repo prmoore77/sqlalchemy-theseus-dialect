@@ -13,11 +13,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
     ReflectedCheckConstraint
 
-__version__ = "0.0.8"
-
-MAX_CONCURRENT_QUERIES = 1
-
-global_semaphore = threading.Semaphore(MAX_CONCURRENT_QUERIES)
+__version__ = "0.0.9"
 
 
 if TYPE_CHECKING:
@@ -59,7 +55,6 @@ class ConnectionWrapper:
     def __init__(self, c: flight_sql.Connection) -> None:
         self.__c = c
         self.notices = list()
-        self._semaphore.acquire(blocking=True)
 
     def cursor(self) -> CursorWrapper:
         return CursorWrapper(conn=self.__c)
@@ -191,8 +186,6 @@ class TheseusDialect(DefaultDialect):
         conn_kwargs = dict()
         for key, value in kwargs.items():
             conn_kwargs[f"{ConnectionOptions.RPC_CALL_HEADER_PREFIX.value}{key}"] = value
-
-        global_semaphore.acquire(blocking=True)
 
         conn = flight_sql.connect(uri=uri,
                                   db_kwargs=db_kwargs,
