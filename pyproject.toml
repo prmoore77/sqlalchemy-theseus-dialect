@@ -10,8 +10,8 @@ where = ["src"]  # list of folders that contain the packages (["."] by default)
 include = ["*"]  # package names should match these glob patterns (["*"] by default)
 
 [project]
-name = "tester-dialect"
-version = "0.0.10"
+name = "sqlalchemy-theseus-dialect"
+version = "0.0.11"
 description = "A SQLAlchemy dialect for connecting to a Theseus Flight SQL server with ADBC"
 readme = "README.md"
 authors = [{ name = "Philip Moore", email = "prmoore77@hotmail.com" }]
@@ -23,10 +23,10 @@ classifiers = [
 ]
 keywords = ["sqlalchemy", "theseus", "gpu", "flight-sql", "adbc", "dialect"]
 dependencies = [
-    "sqlalchemy==1.4.36",
+    "sqlalchemy==2.0.*",
     "adbc-driver-flightsql==1.1.*",
     "adbc-driver-manager==1.1.*",
-    "pyarrow==14.0.1",
+    "pyarrow==16.1.0",
     "psycopg2==2.9.*",
     "importlib-metadata==8.0.*",
     "tenacity==8.5.*"
@@ -34,7 +34,7 @@ dependencies = [
 requires-python = ">=3.9"
 
 [project.entry-points."sqlalchemy.dialects"]
-tester = "sqlalchemy_theseus_dialect:TheseusDialect"
+theseus = "sqlalchemy_theseus_dialect:TheseusDialect"
 
 [project.optional-dependencies]
 dev = ["bumpver", "pip-tools", "pytest"]
@@ -45,7 +45,7 @@ Homepage = "https://github.com/prmoore77/sqlalchemy-theseus-dialect"
 [project.scripts]
 
 [tool.bumpver]
-current_version = "0.0.10"
+current_version = "0.0.11"
 version_pattern = "MAJOR.MINOR.PATCH[PYTAGNUM]"
 commit_message = "bump version {old_version} -> {new_version}"
 commit = true

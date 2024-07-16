@@ -13,7 +13,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
     ReflectedCheckConstraint
 
-__version__ = "0.0.10"
+__version__ = "0.0.11"
 
 
 if TYPE_CHECKING:
