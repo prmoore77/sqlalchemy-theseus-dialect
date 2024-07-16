@@ -12,9 +12,11 @@ from sqlalchemy.engine.url import URL
 from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
     ReflectedCheckConstraint
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 
 MAX_CONCURRENT_QUERIES = 1
+
+global_semaphore = threading.Semaphore(MAX_CONCURRENT_QUERIES)
 
 
 if TYPE_CHECKING:
@@ -26,34 +28,33 @@ class TheseusWarning(Warning):
     pass
 
 
-class CursorWrapper(flight_sql.Cursor):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._semaphore = threading.Semaphore(MAX_CONCURRENT_QUERIES)
-
-    def execute(self, operation: Union[bytes, str], parameters=None) -> None:
-        warnings.warn(
-            "Acquiring semaphore",
-            TheseusWarning,
-        )
-        with self._semaphore:
-            try:
-                super().execute(operation=operation, parameters=parameters)
-            except Exception as e:
-                self.close()
-                raise e
-
-    def executemany(self, operation: Union[bytes, str], seq_of_parameters) -> None:
-        warnings.warn(
-            "Acquiring semaphore",
-            TheseusWarning,
-        )
-        with self._semaphore:
-            try:
-                super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
-            except Exception as e:
-                self.close()
-                raise e
+# class CursorWrapper(flight_sql.Cursor):
+#     def __init__(self, *args, **kwargs) -> None:
+#         super().__init__(*args, **kwargs)
+#
+#     def execute(self, operation: Union[bytes, str], parameters=None) -> None:
+#         warnings.warn(
+#             "Acquiring semaphore",
+#             TheseusWarning,
+#         )
+#         with global_semaphore:
+#             try:
+#                 super().execute(operation=operation, parameters=parameters)
+#             except Exception as e:
+#                 self.close()
+#                 raise e
+#
+#     def executemany(self, operation: Union[bytes, str], seq_of_parameters) -> None:
+#         warnings.warn(
+#             "Acquiring semaphore",
+#             TheseusWarning,
+#         )
+#         with global_semaphore:
+#             try:
+#                 super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
+#             except Exception as e:
+#                 self.close()
+#                 raise e
 
 
 class ConnectionWrapper:
@@ -65,13 +66,9 @@ class ConnectionWrapper:
     def __init__(self, c: flight_sql.Connection) -> None:
         self.__c = c
         self.notices = list()
-        self._semaphore = threading.Semaphore(MAX_CONCURRENT_QUERIES)
 
-    def cursor(self) -> CursorWrapper:
-        return CursorWrapper(conn=self.__c)
-
-    def fetchmany(self, size: Optional[int] = None) -> List:
-        return self.__c.fetchmany(size)
+    def cursor(self) -> flight_sql.Cursor:
+        return self.__c.cursor()
 
     @property
     def c(self) -> "Connection":
@@ -90,6 +87,7 @@ class ConnectionWrapper:
 
     def close(self) -> None:
         self.__c.close()
+        global_semaphore.release()
 
     @property
     def rowcount(self) -> int:
@@ -197,6 +195,8 @@ class TheseusDialect(DefaultDialect):
         conn_kwargs = dict()
         for key, value in kwargs.items():
             conn_kwargs[f"{ConnectionOptions.RPC_CALL_HEADER_PREFIX.value}{key}"] = value
+
+        global_semaphore.acquire(blocking=True)
 
         conn = flight_sql.connect(uri=uri,
                                   db_kwargs=db_kwargs,
