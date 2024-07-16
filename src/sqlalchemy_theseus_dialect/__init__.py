@@ -8,11 +8,12 @@ from sqlalchemy import pool
 from sqlalchemy import types as sqltypes
 from sqlalchemy.engine.default import DefaultDialect
 from sqlalchemy.engine.url import URL
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
     ReflectedCheckConstraint
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 
 MAX_CONCURRENT_QUERIES = 1
 
@@ -28,33 +29,25 @@ class TheseusWarning(Warning):
     pass
 
 
-# class CursorWrapper(flight_sql.Cursor):
-#     def __init__(self, *args, **kwargs) -> None:
-#         super().__init__(*args, **kwargs)
-#
-#     def execute(self, operation: Union[bytes, str], parameters=None) -> None:
-#         warnings.warn(
-#             "Acquiring semaphore",
-#             TheseusWarning,
-#         )
-#         with global_semaphore:
-#             try:
-#                 super().execute(operation=operation, parameters=parameters)
-#             except Exception as e:
-#                 self.close()
-#                 raise e
-#
-#     def executemany(self, operation: Union[bytes, str], seq_of_parameters) -> None:
-#         warnings.warn(
-#             "Acquiring semaphore",
-#             TheseusWarning,
-#         )
-#         with global_semaphore:
-#             try:
-#                 super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
-#             except Exception as e:
-#                 self.close()
-#                 raise e
+class CursorWrapper(flight_sql.Cursor):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def execute(self, operation: Union[bytes, str], parameters=None) -> None:
+        try:
+            super().execute(operation=operation, parameters=parameters)
+        except Exception as e:
+            self.close()
+            raise e
+
+    @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def executemany(self, operation: Union[bytes, str], seq_of_parameters) -> None:
+        try:
+            super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
+        except Exception as e:
+            self.close()
+            raise e
 
 
 class ConnectionWrapper:
@@ -66,9 +59,13 @@ class ConnectionWrapper:
     def __init__(self, c: flight_sql.Connection) -> None:
         self.__c = c
         self.notices = list()
+        self._semaphore.acquire(blocking=True)
 
-    def cursor(self) -> flight_sql.Cursor:
-        return self.__c.cursor()
+    def cursor(self) -> CursorWrapper:
+        return CursorWrapper(conn=self.__c)
+
+    def fetchmany(self, size: Optional[int] = None) -> List:
+        return self.__c.fetchmany(size)
 
     @property
     def c(self) -> "Connection":
@@ -87,7 +84,6 @@ class ConnectionWrapper:
 
     def close(self) -> None:
         self.__c.close()
-        global_semaphore.release()
 
     @property
     def rowcount(self) -> int:
