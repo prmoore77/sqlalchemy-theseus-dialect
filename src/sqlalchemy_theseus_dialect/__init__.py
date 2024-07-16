@@ -1,17 +1,21 @@
 import re
+import threading
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 from adbc_driver_flightsql import dbapi as flight_sql, DatabaseOptions, ConnectionOptions
 from sqlalchemy import pool
 from sqlalchemy import types as sqltypes
 from sqlalchemy.engine.default import DefaultDialect
-from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
-    ReflectedCheckConstraint
 from sqlalchemy.engine.url import URL
 
+from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
+    ReflectedCheckConstraint
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"
+
+MAX_CONCURRENT_QUERIES = 1
+
 
 if TYPE_CHECKING:
     from sqlalchemy.base import Connection
@@ -20,6 +24,36 @@ if TYPE_CHECKING:
 
 class TheseusWarning(Warning):
     pass
+
+
+class CursorWrapper(flight_sql.Cursor):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._semaphore = threading.Semaphore(MAX_CONCURRENT_QUERIES)
+
+    def execute(self, operation: Union[bytes, str], parameters=None) -> None:
+        warnings.warn(
+            "Acquiring semaphore",
+            TheseusWarning,
+        )
+        with self._semaphore:
+            try:
+                super().execute(operation=operation, parameters=parameters)
+            except Exception as e:
+                self.close()
+                raise e
+
+    def executemany(self, operation: Union[bytes, str], seq_of_parameters) -> None:
+        warnings.warn(
+            "Acquiring semaphore",
+            TheseusWarning,
+        )
+        with self._semaphore:
+            try:
+                super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
+            except Exception as e:
+                self.close()
+                raise e
 
 
 class ConnectionWrapper:
@@ -31,9 +65,10 @@ class ConnectionWrapper:
     def __init__(self, c: flight_sql.Connection) -> None:
         self.__c = c
         self.notices = list()
+        self._semaphore = threading.Semaphore(MAX_CONCURRENT_QUERIES)
 
-    def cursor(self) -> flight_sql.Cursor:
-        return self.__c.cursor()
+    def cursor(self) -> CursorWrapper:
+        return CursorWrapper(conn=self.__c)
 
     def fetchmany(self, size: Optional[int] = None) -> List:
         return self.__c.fetchmany(size)
@@ -82,7 +117,7 @@ class ConnectionWrapper:
                 view_name, df = parameters
                 self.__c.register(view_name, df)
             else:
-                with self.__c.cursor() as cur:
+                with self.cursor() as cur:
                     cur.execute(statement, parameters)
         except RuntimeError as e:
             if e.args[0].startswith("Not implemented Error"):
@@ -97,7 +132,7 @@ class ConnectionWrapper:
 
 
 class TheseusDialect(DefaultDialect):
-    name = "theseus"
+    name = "tester"
     driver = "flight_sql_adbc"
     _has_events = False
     supports_statement_cache = False
