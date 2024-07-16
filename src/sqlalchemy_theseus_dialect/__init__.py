@@ -13,7 +13,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from .sqlalchemy_interfaces import ReflectedColumn, ReflectedPrimaryKeyConstraint, ReflectedForeignKeyConstraint, \
     ReflectedCheckConstraint
 
-__version__ = "0.0.9"
+__version__ = "0.0.10"
 
 
 if TYPE_CHECKING:
@@ -31,19 +31,11 @@ class CursorWrapper(flight_sql.Cursor):
 
     @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, min=2, max=10))
     def execute(self, operation: Union[bytes, str], parameters=None) -> None:
-        try:
-            super().execute(operation=operation, parameters=parameters)
-        except Exception as e:
-            self.close()
-            raise e
+        super().execute(operation=operation, parameters=parameters)
 
     @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, min=2, max=10))
     def executemany(self, operation: Union[bytes, str], seq_of_parameters) -> None:
-        try:
-            super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
-        except Exception as e:
-            self.close()
-            raise e
+        super().executemany(operation=operation, seq_of_parameters=seq_of_parameters)
 
 
 class ConnectionWrapper:
@@ -78,6 +70,7 @@ class ConnectionWrapper:
         return self
 
     def close(self) -> None:
+        self.__c.adbc_cancel()
         self.__c.close()
 
     @property
